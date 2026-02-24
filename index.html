@@ -59,14 +59,14 @@
         /* 인쇄 설정 (PDF 저장 최적화 - 우측 잘림 방지 강화) */
         @media print {
             @page { 
-                size: A4 landscape; /* A4 가로 방향 */
-                margin: 5mm;        /* 여백 최소화 */
+                size: A4 portrait; /* A4 세로 방향 */
+                margin: 9mm 11mm 9mm 9mm;
             } 
             body { 
                 background: white; 
                 -webkit-print-color-adjust: exact; 
-                font-size: 8pt;     /* 폰트 크기 축소 (9pt -> 8pt) */
-                zoom: 0.8;          /* [핵심] 배율을 80%로 더 축소하여 우측 공간 확보 */
+                font-size: 8.5pt;
+                zoom: 0.96;
                 width: 100% !important;
                 min-width: 0 !important;
             }
@@ -83,7 +83,8 @@
 
             /* 인쇄 시 우측에 강제로 안전 여백 추가 */
             .print-safe-area {
-                padding-right: 10mm !important; 
+                padding-right: 2mm !important;
+                padding-left: 1mm !important;
                 box-sizing: border-box !important;
             }
             
@@ -104,21 +105,24 @@
                 background: transparent !important; 
                 box-shadow: none !important; 
                 padding: 0 !important; 
-                font-size: 8pt !important;
+                font-size: 9pt !important;
                 height: auto !important;
                 max-width: 100% !important; /* 부모 영역 넘침 방지 */
                 min-width: 0 !important;
             }
             input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
             
-            /* 테이블 최적화 - 셀 패딩 줄임 */
-            table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
+            /* 테이블 최적화 - 세로 인쇄 시 우측 잘림 방지 */
+            table { width: 100% !important; border-collapse: collapse !important; table-layout: auto !important; }
+            th[class*="w-"], td[class*="w-"] { width: auto !important; }
             th, td { 
                 border-bottom: 1px solid #94a3b8 !important; 
-                padding: 4px 1px !important; /* 좌우 패딩 최소화 */
-                white-space: nowrap; 
-                overflow: hidden;
-                text-overflow: ellipsis;
+                padding: 5px 3px !important;
+                white-space: normal;
+                overflow: visible;
+                text-overflow: clip;
+                word-break: break-word;
+                line-height: 1.35;
             }
             thead th { 
                 background-color: #e2e8f0 !important; 
@@ -130,6 +134,22 @@
             
             /* 강제 줄바꿈 방지 */
             tr { page-break-inside: avoid; }
+            .print-portrait-stack {
+                display: block !important;
+            }
+            .print-portrait-stack > * + * {
+                margin-top: 8mm !important;
+            }
+            /* 청구서 표 컬럼 비율 재조정 (상세내역/산출금액 확보) */
+            .claim-print-table th:nth-child(1), .claim-print-table td:nth-child(1) { width: 11% !important; } /* 운행일자 */
+            .claim-print-table th:nth-child(2), .claim-print-table td:nth-child(2) { width: 9% !important; }  /* 출발지 */
+            .claim-print-table th:nth-child(3), .claim-print-table td:nth-child(3) { width: 17% !important; } /* 도착지 */
+            .claim-print-table th:nth-child(4), .claim-print-table td:nth-child(4) { width: 5% !important; }  /* 왕복 */
+            .claim-print-table th:nth-child(5), .claim-print-table td:nth-child(5) { width: 8% !important; }  /* 거리 */
+            .claim-print-table th:nth-child(6), .claim-print-table td:nth-child(6) { width: 7% !important; }  /* 유종 */
+            .claim-print-table th:nth-child(7), .claim-print-table td:nth-child(7) { width: 9% !important; }  /* 적용단가 */
+            .claim-print-table th:nth-child(8), .claim-print-table td:nth-child(8) { width: 17% !important; } /* 상세내역 */
+            .claim-print-table th:nth-child(9), .claim-print-table td:nth-child(9) { width: 12% !important; } /* 산출금액 */
         }
     </style>
 </head>
@@ -183,6 +203,7 @@
         const LOCAL_CONFIG_KEY = "sec_config_local_backup_v2026";
         const LOCAL_DESTINATIONS_KEY = "sec_destinations_local_backup_v2026";
         const LOCAL_PRICES_KEY = "sec_prices_local_backup_v2026";
+        const LOCAL_CLAIM_DRAFT_KEY = "sec_claim_draft_v2026";
 
         const FUEL_TYPES = [
             { value: 'gasoline', label: '휘발유' },
@@ -955,13 +976,57 @@
         };
 
         const ClaimForm = ({ config, destinations, prices }) => {
-            const [header, setHeader] = useState({ dept: '', name: '', submitDate: new Date().toISOString().split('T')[0] });
-            const [rows, setRows] = useState([]);
+            const todayKey = new Date().toISOString().split('T')[0];
+            const getTodayDraft = () => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(LOCAL_CLAIM_DRAFT_KEY));
+                    if (!saved || saved.dateKey !== todayKey) {
+                        localStorage.removeItem(LOCAL_CLAIM_DRAFT_KEY);
+                        return null;
+                    }
+                    return saved;
+                } catch {
+                    return null;
+                }
+            };
+            const [header, setHeader] = useState(() => {
+                const saved = getTodayDraft();
+                if (saved?.header) return saved.header;
+                return { dept: '', name: '', submitDate: new Date().toISOString().split('T')[0] };
+            });
+            const [rows, setRows] = useState(() => {
+                const saved = getTodayDraft();
+                if (Array.isArray(saved?.rows)) return saved.rows;
+                return [];
+            });
+            const [draftSavedAt, setDraftSavedAt] = useState(() => {
+                const saved = getTodayDraft();
+                return saved?.savedAt || '';
+            });
+            const [showDraftToast, setShowDraftToast] = useState(false);
+            const getAutoUnitPrice = (date, fuelType) => {
+                const history = prices.history || {};
+                const region = config.region;
+                const exact = history?.[date]?.[region]?.[fuelType];
+                if (exact) return exact;
+
+                // exact 날짜가 없으면, 해당 날짜 이전의 가장 최근 단가를 사용
+                const target = new Date(`${date}T00:00:00`).getTime();
+                const fallback = Object.keys(history)
+                    .filter((d) => {
+                        const t = new Date(`${d}T00:00:00`).getTime();
+                        return !Number.isNaN(t) && t <= target && history[d]?.[region]?.[fuelType];
+                    })
+                    .sort((a, b) => new Date(b) - new Date(a))[0];
+
+                if (fallback) return history[fallback][region][fuelType];
+                return prices[fuelType] || 0;
+            };
             
             const addRow = () => {
                 const defaultFuel = 'gasoline';
                 const today = new Date().toISOString().split('T')[0];
-                const currentPrice = prices[defaultFuel] || 1700;
+                const currentPrice = getAutoUnitPrice(today, defaultFuel) || 1700;
                 
                 setRows([...rows, { 
                     id: Date.now(), 
@@ -989,20 +1054,7 @@
                     if (field === 'date' || field === 'fuelType') {
                         const dateToCheck = field === 'date' ? value : updatedRow.date;
                         const fuelToCheck = field === 'fuelType' ? value : updatedRow.fuelType;
-                        
-                        // 1. 해당 날짜에 데이터가 있는지
-                        if (prices.history && prices.history[dateToCheck]) {
-                            // 2. 해당 날짜에 '현재 설정된 지역'의 데이터가 있는지 확인
-                            const regionData = prices.history[dateToCheck][config.region];
-                            if (regionData && regionData[fuelToCheck]) {
-                                updatedRow.unitPrice = regionData[fuelToCheck];
-                            } else {
-                                // 해당 지역 데이터가 없으면 현재가 (혹은 0)
-                                updatedRow.unitPrice = prices[fuelToCheck] || 0;
-                            }
-                        } else {
-                            updatedRow.unitPrice = prices[fuelToCheck] || 0;
-                        }
+                        updatedRow.unitPrice = getAutoUnitPrice(dateToCheck, fuelToCheck);
                     }
 
                     return updatedRow;
@@ -1030,17 +1082,21 @@
             };
 
             const totalAmount = rows.reduce((sum, row) => sum + calculateDetails(row).total, 0);
+            const saveDraft = () => {
+                const now = new Date().toLocaleString();
+                try {
+                    localStorage.setItem(LOCAL_CLAIM_DRAFT_KEY, JSON.stringify({ dateKey: todayKey, header, rows, savedAt: now }));
+                    setDraftSavedAt(now);
+                    setShowDraftToast(true);
+                    setTimeout(() => setShowDraftToast(false), 1500);
+                } catch (e) {
+                    console.error("Draft save failed:", e);
+                }
+            };
 
             // 표준 단가 조회 헬퍼 함수
             const getStandardPrice = (date, fuelType) => {
-                // 1. 히스토리에서 해당 날짜+지역+유종 찾기
-                if (prices.history && prices.history[date] && 
-                    prices.history[date][config.region] && 
-                    prices.history[date][config.region][fuelType]) {
-                    return prices.history[date][config.region][fuelType];
-                }
-                // 2. 없으면 현재 전역 단가 리턴
-                return prices[fuelType] || 0;
+                return getAutoUnitPrice(date, fuelType);
             };
 
             return (
@@ -1056,18 +1112,25 @@
                             </button>
                         </div>
                     </div>
+                    {draftSavedAt && (
+                        <div className="mb-4 text-xs text-slate-500 print:hidden">임시저장됨: {draftSavedAt}</div>
+                    )}
+                    {showDraftToast && (
+                        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[120] px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-lg print:hidden">
+                            임시저장되었습니다.
+                        </div>
+                    )}
 
                     {/* PDF 인쇄 영역 (높이 제약 제거 및 스타일 최적화) */}
                     <div className="bg-white shadow-card rounded-3xl p-12 print:shadow-none print:p-0 print:rounded-none w-full print:w-full">
                         
-                        <div className="flex flex-col items-center mb-12 border-b border-slate-100 pb-8">
-                            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">교통비 청구서</h1>
-                            <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em]">Expense Claim Report</p>
+                        <div className="flex flex-col items-center mb-12 border-b border-slate-100 pb-8 print:mb-6 print:pb-4">
+                            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">유류비 청구서</h1>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-12 mb-12">
+                        <div className="grid grid-cols-2 gap-12 mb-12 print-portrait-stack print:mb-6">
                             <div>
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">청구자 정보 (Employee)</h3>
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">청구자 정보</h3>
                                 <div className="space-y-4">
                                     <div className="flex items-center">
                                         <span className="w-24 text-sm font-bold text-slate-500">소속 부서</span>
@@ -1096,8 +1159,8 @@
                             </div>
                         </div>
 
-                        <div className="border border-slate-200 rounded-2xl overflow-hidden print:border-slate-300 print:rounded-none">
-                            <table className="w-full text-sm text-left">
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden print:border-slate-300 print:rounded-none print:mt-2">
+                            <table className="w-full text-sm text-left claim-print-table">
                                 <thead className="bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider border-b border-slate-200 print:bg-slate-100">
                                     <tr>
                                         <th className="px-3 py-3 w-28">운행일자</th>
@@ -1156,8 +1219,9 @@
                                                             : 'text-primary-700 border-primary-200 focus:border-primary-500'}`} />
                                                     
                                                     {isMismatch && (
-                                                        <div className="text-[9px] text-orange-500 font-bold mt-0.5 text-right whitespace-nowrap">
-                                                            기준: {standardPrice.toLocaleString()}
+                                                        <div className="mt-0.5 text-right">
+                                                            <span className="inline-block text-[9px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-bold mr-1">수동수정</span>
+                                                            <span className="text-[9px] text-orange-500 font-bold whitespace-nowrap">기준: {standardPrice.toLocaleString()}</span>
                                                         </div>
                                                     )}
                                                 </td>
@@ -1179,7 +1243,10 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div className="mt-4 flex justify-end print:hidden">
+                        <div className="mt-4 flex justify-end gap-2 print:hidden">
+                            <button onClick={saveDraft} className="px-5 py-2.5 bg-amber-500 text-white rounded-xl font-bold shadow-lg hover:bg-amber-600 transition flex items-center">
+                                <Database size={18} className="mr-2" /> 임시저장
+                            </button>
                             <button onClick={addRow} className="px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition flex items-center">
                                 <Plus size={18} className="mr-2" /> 항목 추가
                             </button>
