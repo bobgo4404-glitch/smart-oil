@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart 유류비 정산 시스템 (2026 Edition)</title>
+    
+    <!-- 1. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+                        slate: { 850: '#1e293b' }
+                    },
+                    fontFamily: {
+                        sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                        'card': '0 0 0 1px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.04)',
+                        'input': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- 2. Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 3. React Modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.300.0?deps=react@18.2.0",
+            "firebase/app": "https://esm.sh/firebase@11.0.2/app",
+            "firebase/firestore": "https://esm.sh/firebase@11.0.2/firestore"
+        }
+    }
+    </script>
+
+    <!-- 4. Styles -->
+    <style>
+        @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css");
+
+        body { font-family: "Pretendard", sans-serif; background-color: #f1f5f9; }
+        
+        .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+        /* 인쇄 설정 (PDF 저장 최적화 - 우측 잘림 방지 강화) */
+        @media print {
+            @page { 
+                size: A4 landscape; /* A4 가로 방향 */
+                margin: 5mm;        /* 여백 최소화 */
+            } 
+            body { 
+                background: white; 
+                -webkit-print-color-adjust: exact; 
+                font-size: 8pt;     /* 폰트 크기 축소 (9pt -> 8pt) */
+                zoom: 0.8;          /* [핵심] 배율을 80%로 더 축소하여 우측 공간 확보 */
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+            header, nav, .no-print, button, .print\:hidden { display: none !important; }
+            
+            /* 컨테이너 및 레이아웃 강제 조정 */
+            .container, .max-w-\[1200px\] { 
+                width: 100% !important; 
+                max-width: none !important; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                overflow: visible !important;
+            }
+
+            /* 인쇄 시 우측에 강제로 안전 여백 추가 */
+            .print-safe-area {
+                padding-right: 10mm !important; 
+                box-sizing: border-box !important;
+            }
+            
+            /* 카드 스타일 제거 (평면화) */
+            .print\:shadow-none { 
+                box-shadow: none !important; 
+                border: none !important; 
+                padding: 0 !important;
+                margin: 0 !important;
+                background: transparent !important;
+            }
+
+            .print\:border-black { border: 1px solid black !important; }
+            
+            /* 입력창 스타일 최적화 */
+            input, select { 
+                border: none !important; 
+                background: transparent !important; 
+                box-shadow: none !important; 
+                padding: 0 !important; 
+                font-size: 8pt !important;
+                height: auto !important;
+                max-width: 100% !important; /* 부모 영역 넘침 방지 */
+                min-width: 0 !important;
+            }
+            input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+            
+            /* 테이블 최적화 - 셀 패딩 줄임 */
+            table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
+            th, td { 
+                border-bottom: 1px solid #94a3b8 !important; 
+                padding: 4px 1px !important; /* 좌우 패딩 최소화 */
+                white-space: nowrap; 
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            thead th { 
+                background-color: #e2e8f0 !important; 
+                color: #0f172a !important; 
+                border-top: 2px solid #334155 !important;
+                border-bottom: 2px solid #334155 !important;
+                -webkit-print-color-adjust: exact;
+            }
+            
+            /* 강제 줄바꿈 방지 */
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased selection:bg-primary-100 selection:text-primary-700">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Settings, MapPin, FileText, Plus, Trash2, Edit2, X, Check,
+            Printer, RefreshCw, TrendingUp, Car, Info, AlertCircle, Calendar, Database 
+        } from 'lucide-react';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD2oC31wI6LmOwyLoePDs6jT_jRxx_7oNw",
+            authDomain: "esg-dashboard-f22c5.firebaseapp.com",
+            projectId: "esg-dashboard-f22c5",
+            storageBucket: "esg-dashboard-f22c5.firebasestorage.app",
+            messagingSenderId: "573849232582",
+            appId: "1:573849232582:web:5086954fc84ebc7daf23c7",
+            measurementId: "G-P52KB29LHV"
+        };
+        let cloudApiCache = null;
+
+        const getCloudApi = async () => {
+            if (cloudApiCache) return cloudApiCache;
+            const appMod = await import('firebase/app');
+            const fsMod = await import('firebase/firestore');
+            const fbApp = appMod.initializeApp(firebaseConfig);
+            const db = fsMod.getFirestore(fbApp);
+            const docRef = fsMod.doc(db, "apps", "smart-fuel-expense-v2026");
+            cloudApiCache = {
+                getDoc: fsMod.getDoc,
+                setDoc: fsMod.setDoc,
+                serverTimestamp: fsMod.serverTimestamp,
+                docRef
+            };
+            return cloudApiCache;
+        };
+        const LOCAL_CONFIG_KEY = "sec_config_local_backup_v2026";
+        const LOCAL_DESTINATIONS_KEY = "sec_destinations_local_backup_v2026";
+        const LOCAL_PRICES_KEY = "sec_prices_local_backup_v2026";
+
+        const FUEL_TYPES = [
+            { value: 'gasoline', label: '휘발유' },
+            { value: 'diesel', label: '경유' },
+            { value: 'lpg', label: 'LPG' },
+            { value: 'hydrogen', label: '수소' },
+            { value: 'electric', label: '전기' }
+        ];
+
+        const REGIONS = [
+            '서울', '경기', '인천', '강원', '충북', '충남', '대전', '세종', 
+            '경북', '경남', '대구', '울산', '부산', '전북', '전남', '광주', '제주'
+        ];
+
+        const SIDO_CODES = {
+            '서울': '01', '경기': '02', '강원': '03', '충북': '04', '충남': '05',
+            '전북': '06', '전남': '07', '경북': '08', '경남': '09', '부산': '10',
+            '제주': '11', '대구': '14', '인천': '15', '광주': '16', '대전': '17',
+            '울산': '18', '세종': '19'
+        };
+
+        const MOCK_OPINET_DATA = {
+            '서울': { gasoline: 1750, diesel: 1620, lpg: 980 },
+            '경기': { gasoline: 1710, diesel: 1590, lpg: 960 },
+            '전국평균': { gasoline: 1690, diesel: 1580, lpg: 950 }
+        };
+
+        const formatCurrency = (amount) => new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amount);
+        const formatDateString = (dateStr) => {
+            if (!dateStr || dateStr.length !== 8) return '';
+            return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        };
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        const ADMIN_PASSWORD_HASH = "1bcc0d24f8766535308c820c9870d2b3fd38787a1e9ab02e056931535ffda132";
+        const toHex = (buffer) => Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const hashText = async (text) => {
+            const enc = new TextEncoder();
+            const digest = await crypto.subtle.digest('SHA-256', enc.encode(text));
+            return toHex(digest);
+        };
+        const normalizeAndPruneHistory = (history, days = 60) => {
+            const source = history || {};
+            const mergedByDate = {};
+            const parseDate = (value) => {
+                if (!value) return null;
+                const dateOnly = String(value).slice(0, 10);
+                const dt = new Date(`${dateOnly}T00:00:00`);
+                return Number.isNaN(dt.getTime()) ? null : { key: dateOnly, date: dt };
+            };
+
+            Object.entries(source).forEach(([rawDate, regions]) => {
+                const parsed = parseDate(rawDate);
+                if (!parsed) return;
+                if (!mergedByDate[parsed.key]) mergedByDate[parsed.key] = {};
+                Object.entries(regions || {}).forEach(([region, values]) => {
+                    if (!mergedByDate[parsed.key][region]) mergedByDate[parsed.key][region] = {};
+                    mergedByDate[parsed.key][region] = { ...mergedByDate[parsed.key][region], ...(values || {}) };
+                });
+            });
+
+            const cutoff = new Date();
+            cutoff.setHours(0, 0, 0, 0);
+            cutoff.setDate(cutoff.getDate() - (days - 1));
+
+            const result = {};
+            Object.keys(mergedByDate).forEach((dateKey) => {
+                const dt = new Date(`${dateKey}T00:00:00`);
+                if (Number.isNaN(dt.getTime())) return;
+                if (dt >= cutoff) result[dateKey] = mergedByDate[dateKey];
+            });
+            return result;
+        };
+        const mergeHistoryMaps = (base, incoming) => {
+            const result = { ...(base || {}) };
+            Object.entries(incoming || {}).forEach(([dateKey, regions]) => {
+                if (!result[dateKey]) result[dateKey] = {};
+                result[dateKey] = { ...result[dateKey], ...(regions || {}) };
+            });
+            return result;
+        };
+
+        const syncOpinetPrices = async ({
+            config,
+            setPrices,
+            onLoading = () => {},
+            onError = () => {},
+            onStatus = () => {},
+            allRegions = true
+        }) => {
+            onLoading(true);
+            onError(null);
+            onStatus('연결 중...');
+
+            const finish = (src) => {
+                onStatus(src);
+                onLoading(false);
+            };
+            const getMockData = () => MOCK_OPINET_DATA[config.region] || MOCK_OPINET_DATA['전국평균'];
+            const fetchWithTimeout = async (url, timeoutMs = 7000) => {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), timeoutMs);
+                try {
+                    return await fetch(url, { signal: controller.signal, cache: 'no-store' });
+                } finally {
+                    clearTimeout(timer);
+                }
+            };
+
+            if (!config.opinetApiKey) {
+                await sleep(500);
+                const data = getMockData();
+                const randomize = (val) => Math.floor(val + (Math.random() * 20 - 10));
+                setPrices(prev => ({
+                    ...prev,
+                    gasoline: randomize(data.gasoline),
+                    diesel: randomize(data.diesel),
+                    lpg: randomize(data.lpg)
+                }));
+                finish('시뮬레이션 (Offline)');
+                return false;
+            }
+
+            const key = encodeURIComponent(config.opinetApiKey);
+            const endpointSets = [
+                {
+                    buildCurrent: (sidoCode) => `https://www.opinet.co.kr/api/avgSidoPrice.do?out=xml&code=${key}&sido=${sidoCode}`,
+                    buildHistory: (sidoCode) => `https://www.opinet.co.kr/api/avgRecentPrice.do?out=xml&code=${key}&sido=${sidoCode}`
+                },
+                {
+                    buildCurrent: (sidoCode) => `https://www.opinet.co.kr/api/avgSidoPrice.do?out=xml&certkey=${key}&sido=${sidoCode}`,
+                    buildHistory: (sidoCode) => `https://www.opinet.co.kr/api/avgRecentPrice.do?out=xml&certkey=${key}&sido=${sidoCode}`
+                }
+            ];
+
+            const customProxy = (config.opinetProxyUrl || '').trim();
+            const proxyStrategies = [
+                { name: '직접 연결', build: (url) => url },
+                ...(customProxy ? [{
+                    name: '사용자 프록시',
+                    build: (url) => customProxy.includes('{url}')
+                        ? customProxy.replace('{url}', encodeURIComponent(url))
+                        : `${customProxy}${customProxy.includes('?') ? '&' : '?'}url=${encodeURIComponent(url)}`
+                }] : []),
+                { name: '공용 프록시 #1', build: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}&t=${Date.now()}` },
+                { name: '공용 프록시 #2', build: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}` },
+                { name: '공용 프록시 #3', build: (url) => `https://thingproxy.freeboard.io/fetch/${url}` }
+            ];
+
+            const parseXml = (txt) => new DOMParser().parseFromString(txt, "text/xml");
+            const hasXmlError = (doc) => doc.getElementsByTagName("parsererror").length > 0;
+            const getPrice = (doc, prodcd) => {
+                const item = Array.from(doc.getElementsByTagName("OIL")).find(el => el.getElementsByTagName("PRODCD")[0]?.textContent === prodcd);
+                const value = Number(item?.getElementsByTagName("PRICE")[0]?.textContent);
+                return Number.isFinite(value) ? Math.round(value) : 0;
+            };
+
+            const regionsToFetch = allRegions
+                ? Object.entries(SIDO_CODES)
+                : [[config.region, SIDO_CODES[config.region] || '01']];
+            const mergedHistoryData = {};
+            const regionCurrentPrices = {};
+            let successCount = 0;
+
+            for (const [regionName, sidoCode] of regionsToFetch) {
+                let regionSuccess = false;
+                for (let e = 0; e < endpointSets.length && !regionSuccess; e++) {
+                    const currentUrl = endpointSets[e].buildCurrent(sidoCode);
+                    const historyUrl = endpointSets[e].buildHistory(sidoCode);
+                    for (let i = 0; i < proxyStrategies.length; i++) {
+                        try {
+                            onStatus(`[${regionName}] ${proxyStrategies[i].name} 시도...`);
+
+                            const resCurrent = await fetchWithTimeout(proxyStrategies[i].build(currentUrl), 7000);
+                            if (!resCurrent.ok) throw new Error(`HTTP ${resCurrent.status}`);
+                            const txtCurrent = await resCurrent.text();
+                            const xmlCurrent = parseXml(txtCurrent);
+                            if (hasXmlError(xmlCurrent)) throw new Error("XML 파싱 실패");
+
+                            const oilTags = xmlCurrent.getElementsByTagName("OIL");
+                            if (oilTags.length === 0) throw new Error("유가 데이터 없음");
+
+                            const resHistory = await fetchWithTimeout(proxyStrategies[i].build(historyUrl), 7000);
+                            const txtHistory = resHistory.ok ? await resHistory.text() : null;
+
+                            const gasPrice = getPrice(xmlCurrent, 'B027');
+                            const dieselPrice = getPrice(xmlCurrent, 'D047');
+                            const lpgPrice = getPrice(xmlCurrent, 'K015');
+                            if (!gasPrice && !dieselPrice && !lpgPrice) throw new Error("단가 데이터 없음");
+
+                            regionCurrentPrices[regionName] = { gasoline: gasPrice, diesel: dieselPrice, lpg: lpgPrice };
+
+                            if (txtHistory) {
+                                const xmlHistory = parseXml(txtHistory);
+                                if (!hasXmlError(xmlHistory)) {
+                                    const historyOils = xmlHistory.getElementsByTagName("OIL");
+                                    Array.from(historyOils).forEach(item => {
+                                        const date = formatDateString(item.getElementsByTagName("DATE")[0]?.textContent);
+                                        const prodcd = item.getElementsByTagName("PRODCD")[0]?.textContent;
+                                        const price = Number(item.getElementsByTagName("PRICE")[0]?.textContent);
+                                        if (date && prodcd && Number.isFinite(price)) {
+                                            if (!mergedHistoryData[date]) mergedHistoryData[date] = {};
+                                            if (!mergedHistoryData[date][regionName]) mergedHistoryData[date][regionName] = {};
+                                            if (prodcd === 'B027') mergedHistoryData[date][regionName].gasoline = Math.round(price);
+                                            else if (prodcd === 'D047') mergedHistoryData[date][regionName].diesel = Math.round(price);
+                                            else if (prodcd === 'K015') mergedHistoryData[date][regionName].lpg = Math.round(price);
+                                        }
+                                    });
+                                }
+                            }
+
+                            successCount += 1;
+                            regionSuccess = true;
+                            break;
+                        } catch (err) {
+                            console.warn(`Opinet fetch fail [${regionName}][endpoint:${e + 1}][${proxyStrategies[i].name}]`, err);
+                        }
+                    }
+                }
+            }
+
+            if (successCount > 0) {
+                setPrices(prev => {
+                    const newHistory = { ...prev.history };
+                    Object.keys(mergedHistoryData).forEach(date => {
+                        if (!newHistory[date]) newHistory[date] = {};
+                        newHistory[date] = { ...newHistory[date], ...mergedHistoryData[date] };
+                    });
+
+                    const today = new Date().toISOString().split('T')[0];
+                    if (!newHistory[today]) newHistory[today] = {};
+                    Object.entries(regionCurrentPrices).forEach(([regionName, regionPrice]) => {
+                        if (!newHistory[today][regionName]) newHistory[today][regionName] = {};
+                        newHistory[today][regionName] = { ...newHistory[today][regionName], ...regionPrice };
+                    });
+
+                    const selectedRegionPrices = regionCurrentPrices[config.region]
+                        || regionCurrentPrices[Object.keys(regionCurrentPrices)[0]]
+                        || {};
+
+                    return {
+                        ...prev,
+                        gasoline: selectedRegionPrices.gasoline ?? prev.gasoline,
+                        diesel: selectedRegionPrices.diesel ?? prev.diesel,
+                        lpg: selectedRegionPrices.lpg ?? prev.lpg,
+                        hydrogen: config.manualPriceHydrogen,
+                        electric: config.manualPriceElectric,
+                        lastUpdated: new Date().toLocaleString(),
+                        history: normalizeAndPruneHistory(newHistory, 60)
+                    };
+                });
+
+                finish(`오피넷 API (${successCount}/${regionsToFetch.length} 지역 갱신)`);
+                return true;
+            }
+
+            onError("연결 실패: 인증키, CORS, 프록시 상태를 확인해주세요. 시뮬레이션 모드로 전환합니다.");
+            const data = getMockData();
+            setPrices(prev => ({ ...prev, gasoline: data.gasoline, diesel: data.diesel, lpg: data.lpg }));
+            finish('시뮬레이션 (Fallback)');
+            return false;
+        };
+
+        // --- Components ---
+
+        const Header = ({ activeTab, setActiveTab, isAdmin, onOpenAdmin, onExitAdmin, cloudState }) => {
+            const navItems = isAdmin
+                ? [{ id: 'claim', label: '청구서 작성' }, { id: 'distances', label: '출장지 관리' }, { id: 'prices', label: '실시간 유가' }, { id: 'settings', label: '환경설정' }]
+                : [{ id: 'claim', label: '청구서 작성' }];
+            const cloudBadge = cloudState || { text: '확인 중', dot: 'bg-amber-500' };
+            return (
+            <header className="sticky top-0 z-50 glass border-b border-slate-200/60 shadow-sm print:hidden">
+                <div className="container mx-auto px-4 py-3">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center space-x-3 group cursor-pointer" onClick={() => setActiveTab('claim')}>
+                            <div className="p-2.5 bg-gradient-to-br from-primary-600 to-primary-700 rounded-xl shadow-lg shadow-primary-500/20 transition-transform group-hover:scale-105">
+                                <Car size={22} className="text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold tracking-tight text-slate-800">Smart 유류비 정산</h1>
+                                <p className="text-[10px] font-bold text-primary-600 uppercase tracking-widest">Enterprise Edition</p>
+                            </div>
+                        </div>
+                        
+                        <div className="hidden md:flex items-center gap-3">
+                            <nav className="flex bg-slate-200/50 p-1.5 rounded-xl">
+                                {navItems.map((item) => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setActiveTab(item.id)}
+                                    className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${
+                                        activeTab === item.id 
+                                        ? 'bg-white text-primary-700 shadow-sm ring-1 ring-black/5' 
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
+                                    }`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                            </nav>
+                            {isAdmin && (
+                                <span className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-2">
+                                    <span className={`inline-block w-2 h-2 rounded-full ${cloudBadge.dot}`}></span>
+                                    클라우드 {cloudBadge.text}
+                                </span>
+                            )}
+                            {!isAdmin ? (
+                                <button
+                                    onClick={onOpenAdmin}
+                                    className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-800 text-white hover:bg-slate-900 transition"
+                                >
+                                    관리자 모드 접속
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={onExitAdmin}
+                                    className="px-3 py-2 rounded-lg text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition"
+                                >
+                                    관리자 모드 종료
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div className="md:hidden flex justify-around items-center p-3 bg-white border-t border-slate-200 fixed bottom-0 w-full z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    {navItems.map(item => (
+                        <React.Fragment key={item.id}>
+                        <button key={item.id} onClick={() => setActiveTab(item.id)} 
+                            className={`p-2 rounded-xl transition-colors ${activeTab === item.id ? 'text-primary-600 bg-primary-50' : 'text-slate-400'}`}>
+                            {item.id === 'claim' && <FileText size={20} />}
+                            {item.id === 'distances' && <MapPin size={20} />}
+                            {item.id === 'prices' && <TrendingUp size={20} />}
+                            {item.id === 'settings' && <Settings size={20} />}
+                        </button>
+                        </React.Fragment>
+                    ))}
+                    {!isAdmin && (
+                        <button onClick={onOpenAdmin} className="p-2 rounded-xl text-slate-500">
+                            <Settings size={20} />
+                        </button>
+                    )}
+                    {isAdmin && (
+                        <span className="p-2 rounded-xl text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                            <span className={`inline-block w-2 h-2 rounded-full ${cloudBadge.dot}`}></span>
+                            {cloudBadge.text}
+                        </span>
+                    )}
+                    {isAdmin && (
+                        <button onClick={onExitAdmin} className="p-2 rounded-xl text-rose-500">
+                            <X size={20} />
+                        </button>
+                    )}
+                </div>
+            </header>
+        );
+        };
+
+        const SettingsPanel = ({ config, setConfig, connectionState, onSaveApiKey, onCheckConnection, onSaveSettings }) => {
+            const [apiKeyDraft, setApiKeyDraft] = useState(config.opinetApiKey || '');
+            const [saveMessage, setSaveMessage] = useState('');
+            const [savingAll, setSavingAll] = useState(false);
+            const [saveAllMessage, setSaveAllMessage] = useState('');
+
+            useEffect(() => {
+                setApiKeyDraft(config.opinetApiKey || '');
+            }, [config.opinetApiKey]);
+
+            const handleChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                setConfig(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+            };
+            const saveApiKey = () => {
+                onSaveApiKey((apiKeyDraft || '').trim());
+                setSaveMessage('저장됨');
+                setTimeout(() => setSaveMessage(''), 1500);
+            };
+            const saveAllSettings = async () => {
+                setSavingAll(true);
+                const ok = await onSaveSettings();
+                setSavingAll(false);
+                setSaveAllMessage(ok ? '환경설정 저장 완료' : '로컬 저장 완료 (클라우드 저장 실패)');
+                setTimeout(() => setSaveAllMessage(''), 2200);
+            };
+            const statusMeta = {
+                idle: { dot: 'bg-slate-400', text: '미확인' },
+                checking: { dot: 'bg-amber-500', text: '점검 중' },
+                ok: { dot: 'bg-emerald-500', text: '정상' },
+                error: { dot: 'bg-rose-500', text: '오류' }
+            }[connectionState?.status || 'idle'];
+            return (
+                <div className="max-w-4xl mx-auto animate-slide-up mb-24 md:mb-8">
+                    <div className="bg-white rounded-2xl shadow-card border border-slate-200 overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 bg-slate-50/80">
+                            <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                                <Settings className="mr-3 text-primary-600" strokeWidth={2.5} /> 
+                                시스템 환경설정
+                            </h2>
+                            <p className="text-slate-500 mt-1 ml-9 text-sm">유류비 계산에 필요한 기준 데이터를 설정합니다.</p>
+                        </div>
+                        
+                        <div className="p-8 space-y-10">
+                            <section>
+                                <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
+                                    <span className="w-2 h-2 rounded-full bg-primary-500 mr-2"></span> 데이터 연동
+                                </h3>
+                                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">오피넷(Opinet) API 인증키</label>
+                                    <div className="flex flex-col md:flex-row gap-3">
+                                        <input type="password" value={apiKeyDraft} onChange={(e) => setApiKeyDraft(e.target.value)}
+                                            placeholder="발급받은 인증키 입력 (User ID)" 
+                                            className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none transition-all placeholder:text-slate-400 shadow-input" />
+                                        <button
+                                            type="button"
+                                            onClick={saveApiKey}
+                                            className="px-5 py-3 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 transition whitespace-nowrap"
+                                        >
+                                            인증키 저장
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onCheckConnection((apiKeyDraft || '').trim())}
+                                            disabled={connectionState?.status === 'checking'}
+                                            className="px-5 py-3 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition whitespace-nowrap disabled:opacity-70"
+                                        >
+                                            {connectionState?.status === 'checking' ? '점검 중...' : '연동 점검'}
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-3 text-xs">
+                                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${statusMeta.dot} ${connectionState?.status === 'checking' ? 'animate-pulse' : ''}`}></span>
+                                        <span className="font-semibold text-slate-600">통신 연동상태: {statusMeta.text}</span>
+                                        {saveMessage && <span className="text-emerald-600 font-semibold">{saveMessage}</span>}
+                                    </div>
+                                    {connectionState?.message && (
+                                        <p className="mt-1 text-[11px] text-slate-500">{connectionState.message}</p>
+                                    )}
+                                    <p className="mt-2 text-xs text-slate-500 flex items-center">
+                                        <AlertCircle size={12} className="mr-1" /> 키 입력 시 해당 지역의 유가 데이터를 로컬에 축적합니다.
+                                    </p>
+                                    <div className="mt-4">
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">커스텀 프록시 URL (선택)</label>
+                                        <input
+                                            type="text"
+                                            name="opinetProxyUrl"
+                                            value={config.opinetProxyUrl || ''}
+                                            onChange={handleChange}
+                                            placeholder="예: https://your-proxy.example.com/fetch?url={url}"
+                                            className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none transition-all placeholder:text-slate-400 shadow-input text-sm"
+                                        />
+                                        <p className="mt-1 text-[11px] text-slate-400">공용 프록시가 막히면 사내 프록시를 설정하세요. URL 치환 형식을 지원하는 경우 오피넷 요청 URL이 자동 삽입됩니다.</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <section>
+                                    <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> 기본 설정
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">유가 기준 지역</label>
+                                            <div className="relative">
+                                                <select name="region" value={config.region} onChange={handleChange} 
+                                                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none appearance-none shadow-input font-medium text-slate-700">
+                                                    {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                                </select>
+                                                <div className="absolute right-4 top-3.5 pointer-events-none text-slate-400">▼</div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">km당 유지보수비</label>
+                                            <div className="relative">
+                                                <input type="number" name="maintenanceCostPerKm" value={config.maintenanceCostPerKm} onChange={handleChange} 
+                                                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none shadow-input font-medium text-slate-700" />
+                                                <span className="absolute right-4 top-3.5 text-slate-400 text-sm font-medium">원/km</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500 mr-2"></span> 수소/전기 기준 단가 (수동)
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">수소 (kg당)</label>
+                                            <div className="relative">
+                                                <input type="number" name="manualPriceHydrogen" value={config.manualPriceHydrogen} onChange={handleChange} 
+                                                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-200 focus:border-amber-500 outline-none shadow-input font-medium text-slate-700" />
+                                                <span className="absolute right-4 top-3.5 text-slate-400 text-sm font-medium">원</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">전기 (kWh당)</label>
+                                            <div className="relative">
+                                                <input type="number" name="manualPriceElectric" value={config.manualPriceElectric} onChange={handleChange} 
+                                                    className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-200 focus:border-amber-500 outline-none shadow-input font-medium text-slate-700" />
+                                                <span className="absolute right-4 top-3.5 text-slate-400 text-sm font-medium">원</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <section>
+                                <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
+                                    <span className="w-2 h-2 rounded-full bg-violet-500 mr-2"></span> 차량 연비 설정
+                                </h3>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                    {[{ id: 'effGasoline', label: '휘발유', unit: 'km/L' }, { id: 'effDiesel', label: '경유', unit: 'km/L' }, { id: 'effLpg', label: 'LPG', unit: 'km/L' }, { id: 'effHydrogen', label: '수소', unit: 'km/kg' }, { id: 'effElectric', label: '전기', unit: 'km/kWh' }].map((item) => (
+                                        <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-primary-300 transition-colors shadow-sm">
+                                            <label className="text-xs font-bold text-slate-500 block mb-2">{item.label}</label>
+                                            <div className="flex items-baseline border-b border-slate-200 pb-1 focus-within:border-primary-500">
+                                                <input type="number" name={item.id} value={config[item.id]} onChange={handleChange} 
+                                                    className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none p-0" />
+                                                <span className="text-[10px] text-slate-400 ml-1 whitespace-nowrap">{item.unit}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                            <section className="pt-2">
+                                <div className="flex items-center justify-end gap-3">
+                                    {saveAllMessage && <span className="text-xs font-semibold text-slate-600">{saveAllMessage}</span>}
+                                    <button
+                                        type="button"
+                                        onClick={saveAllSettings}
+                                        disabled={savingAll}
+                                        className="px-6 py-3 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 transition disabled:opacity-70"
+                                    >
+                                        {savingAll ? '저장 중...' : '환경설정 저장'}
+                                    </button>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const FuelPrices = ({ config, prices, setPrices, syncState, onRefresh }) => {
+            const [viewRegion, setViewRegion] = useState(config.region);
+
+            useEffect(() => {
+                setViewRegion(config.region);
+            }, [config.region]);
+
+            useEffect(() => {
+                setPrices(prev => ({
+                    ...prev,
+                    hydrogen: config.manualPriceHydrogen,
+                    electric: config.manualPriceElectric
+                }));
+            }, [config.manualPriceHydrogen, config.manualPriceElectric]);
+
+            const fetchPrices = async () => {
+                await onRefresh();
+            };
+
+            // 선택된 지역의 히스토리만 필터링하여 보여주기
+            const getRegionHistory = () => {
+                if (!prices.history) return [];
+                return Object.entries(prices.history)
+                    .filter(([date, regions]) => regions[viewRegion])
+                    .map(([date, regions]) => ({ date, ...regions[viewRegion] }))
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+            };
+
+            const regionHistoryData = getRegionHistory();
+            const latestRegionData = regionHistoryData[0] || null;
+            const currentCardPrices = {
+                gasoline: latestRegionData?.gasoline ?? (viewRegion === config.region ? prices.gasoline : 0),
+                diesel: latestRegionData?.diesel ?? (viewRegion === config.region ? prices.diesel : 0),
+                lpg: latestRegionData?.lpg ?? (viewRegion === config.region ? prices.lpg : 0),
+                hydrogen: prices.hydrogen,
+                electric: prices.electric
+            };
+
+            return (
+                <div className="max-w-5xl mx-auto animate-slide-up mb-24 md:mb-8">
+                    <div className="bg-white rounded-2xl shadow-card border border-slate-200 p-8">
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                                    <TrendingUp className="mr-3 text-primary-600" /> 실시간 유가 대시보드
+                                </h2>
+                                <div className="flex flex-wrap items-center mt-2 gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-500">조회 지역</span>
+                                        <select
+                                            value={viewRegion}
+                                            onChange={(e) => setViewRegion(e.target.value)}
+                                            className="px-2.5 py-1 rounded-md bg-white text-slate-700 text-xs font-bold border border-slate-300"
+                                        >
+                                            {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                                        환경설정 지역: {config.region}
+                                    </span>
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold flex items-center border ${
+                                        (syncState.status || '').includes('API') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                                    }`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full mr-2 ${(syncState.status || '').includes('API') ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                                        {syncState.status || '준비'}
+                                    </span>
+                                    {regionHistoryData.length > 0 && (
+                                        <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 text-xs font-bold border border-indigo-100 flex items-center">
+                                            <Database size={12} className="mr-1"/> {viewRegion} 데이터 {regionHistoryData.length}건 보유
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <button onClick={fetchPrices} disabled={syncState.loading} 
+                                className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold shadow-lg hover:bg-slate-900 transition-all disabled:opacity-70 flex items-center">
+                                <RefreshCw className={`mr-2 h-4 w-4 ${syncState.loading ? 'animate-spin' : ''}`} />
+                                {syncState.loading ? '동기화 중...' : '가격정보 새로고침'}
+                            </button>
+                        </div>
+
+                        {syncState.error && (
+                            <div className="mb-6 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center">
+                                <AlertCircle size={16} className="mr-2" /> {syncState.error}
+                            </div>
+                        )}
+
+                        {/* Current Prices Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                            {[
+                                { label: '휘발유', key: 'gasoline', color: 'text-amber-700 bg-amber-50 border-amber-200', icon: '⛽' },
+                                { label: '경유', key: 'diesel', color: 'text-blue-700 bg-blue-50 border-blue-200', icon: '🚛' },
+                                { label: 'LPG', key: 'lpg', color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: '🔥' },
+                                { label: '수소', key: 'hydrogen', color: 'text-cyan-700 bg-cyan-50 border-cyan-200', icon: '💧', manual: true },
+                                { label: '전기', key: 'electric', color: 'text-violet-700 bg-violet-50 border-violet-200', icon: '⚡', unit: 'kWh', manual: true }
+                            ].map((item) => (
+                                <div key={item.key} className={`relative p-5 rounded-xl border transition-all duration-300 hover:shadow-md ${item.color} bg-opacity-40`}>
+                                    {item.manual && <span className="absolute top-2 right-3 text-[10px] uppercase font-bold tracking-wider opacity-60">수동설정</span>}
+                                    <div className="text-2xl mb-2">{item.icon}</div>
+                                    <div className="text-xs font-bold uppercase tracking-wider opacity-70 mb-1">{item.label}</div>
+                                    <div className="text-xl font-bold tracking-tight text-slate-900">
+                                        {(currentCardPrices[item.key] || 0).toLocaleString()}
+                                        <span className="text-xs font-medium opacity-60 ml-1">원/{item.unit || 'L'}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* History Table */}
+                        <div className="border-t border-slate-100 pt-6">
+                            <h3 className="text-lg font-bold text-slate-700 mb-4 flex items-center">
+                                <div className="w-1 h-6 bg-slate-800 rounded-full mr-3"></div>
+                                일별 유가 변동 내역 ({viewRegion} 기준)
+                            </h3>
+                            <div className="overflow-hidden rounded-xl border border-slate-200">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-6 py-3 font-bold">날짜</th>
+                                            <th className="px-6 py-3 text-right text-amber-600 font-bold">휘발유</th>
+                                            <th className="px-6 py-3 text-right text-blue-600 font-bold">경유</th>
+                                            <th className="px-6 py-3 text-right text-emerald-600 font-bold">LPG</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                        {regionHistoryData.length > 0 ? (
+                                            regionHistoryData.map((data) => (
+                                                <tr key={data.date} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-6 py-3 font-medium text-slate-700">{data.date}</td>
+                                                    <td className="px-6 py-3 text-right font-mono">{data.gasoline?.toLocaleString()}</td>
+                                                    <td className="px-6 py-3 text-right font-mono">{data.diesel?.toLocaleString()}</td>
+                                                    <td className="px-6 py-3 text-right font-mono">{data.lpg?.toLocaleString()}</td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr><td colSpan="4" className="px-6 py-8 text-center text-slate-400 italic">저장된 '{config.region}' 지역의 데이터가 없습니다. 상단 버튼을 눌러 데이터를 동기화하세요.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400 text-right">* 이제 지역을 변경해도 기존 데이터가 사라지지 않고 누적됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const DistanceManager = ({ destinations, setDestinations }) => {
+            const [newItem, setNewItem] = useState({ name: '', distance: '' });
+            const [editingId, setEditingId] = useState(null);
+            const [editForm, setEditForm] = useState({ name: '', distance: '' });
+
+            const addDestination = () => { if (newItem.name && newItem.distance) { setDestinations([...destinations, { ...newItem, id: Date.now() }]); setNewItem({ name: '', distance: '' }); } };
+            const removeDestination = (id) => setDestinations(destinations.filter(d => d.id !== id));
+            
+            const startEdit = (dest) => { setEditingId(dest.id); setEditForm({ name: dest.name, distance: dest.distance }); };
+            const saveEdit = () => { setDestinations(destinations.map(d => d.id === editingId ? { ...d, ...editForm } : d)); setEditingId(null); };
+
+            return (
+                <div className="max-w-4xl mx-auto animate-slide-up mb-24 md:mb-8">
+                    <div className="bg-white rounded-2xl shadow-card border border-slate-200 p-8">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center">
+                            <MapPin className="mr-3 text-primary-600" /> 출장지 데이터베이스
+                        </h2>
+                        
+                        <div className="flex flex-col md:flex-row gap-4 mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                            <input type="text" placeholder="새로운 출장지 명칭" className="flex-[2] px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-input focus:ring-2 focus:ring-primary-500 outline-none font-medium" value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} />
+                            <div className="flex flex-1 gap-2">
+                                <input type="number" placeholder="거리" className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg shadow-input focus:ring-2 focus:ring-primary-500 outline-none font-medium" value={newItem.distance} onChange={(e) => setNewItem({...newItem, distance: e.target.value})} />
+                                <span className="flex items-center text-sm font-bold text-slate-500 whitespace-nowrap px-2">km</span>
+                            </div>
+                            <button onClick={addDestination} className="px-6 py-3 bg-primary-600 text-white rounded-lg font-bold shadow-lg hover:bg-primary-700 transition-all flex items-center justify-center">
+                                <Plus size={18} className="mr-1" /> 등록
+                            </button>
+                        </div>
+
+                        <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-100 border-b border-slate-200">
+                                    <tr>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">출장지</th>
+                                        <th className="p-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">편도 거리</th>
+                                        <th className="p-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">왕복 기준</th>
+                                        <th className="p-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {destinations.length === 0 ? (<tr><td colSpan="4" className="p-10 text-center text-slate-400">데이터가 없습니다.</td></tr>) : (destinations.map((dest) => (
+                                        <tr key={dest.id} className="group hover:bg-slate-50 transition-colors">
+                                            {editingId === dest.id ? (
+                                                <>
+                                                    <td className="p-3"><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full p-2 bg-white border border-primary-500 rounded outline-none shadow-sm" autoFocus /></td>
+                                                    <td className="p-3 text-right"><input type="number" value={editForm.distance} onChange={e => setEditForm({...editForm, distance: e.target.value})} className="w-24 p-2 bg-white border border-primary-500 rounded text-right outline-none shadow-sm" /></td>
+                                                    <td className="p-3 text-right text-slate-300">-</td>
+                                                    <td className="p-3 text-center flex justify-center gap-2">
+                                                        <button onClick={saveEdit} className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200"><Check size={16} /></button>
+                                                        <button onClick={() => setEditingId(null)} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200"><X size={16} /></button>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="p-4 font-bold text-slate-700">{dest.name}</td>
+                                                    <td className="p-4 text-right font-medium text-slate-600">{dest.distance} km</td>
+                                                    <td className="p-4 text-right text-slate-400 font-normal">{(dest.distance * 2).toFixed(1)} km</td>
+                                                    <td className="p-4 text-center flex justify-center gap-2">
+                                                        <button onClick={() => startEdit(dest)} className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"><Edit2 size={16} /></button>
+                                                        <button onClick={() => removeDestination(dest.id)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={16} /></button>
+                                                    </td>
+                                                </>
+                                            )}
+                                        </tr>
+                                    )))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ClaimForm = ({ config, destinations, prices }) => {
+            const [header, setHeader] = useState({ dept: '', name: '', submitDate: new Date().toISOString().split('T')[0] });
+            const [rows, setRows] = useState([]);
+            
+            const addRow = () => {
+                const defaultFuel = 'gasoline';
+                const today = new Date().toISOString().split('T')[0];
+                const currentPrice = prices[defaultFuel] || 1700;
+                
+                setRows([...rows, { 
+                    id: Date.now(), 
+                    date: today, 
+                    start: '회사', 
+                    end: '', 
+                    isRoundTrip: true, 
+                    distance: 0, 
+                    fuelType: defaultFuel,
+                    unitPrice: currentPrice
+                }]);
+            };
+            
+            const updateRow = (id, field, value) => {
+                setRows(rows.map(row => {
+                    if (row.id !== id) return row;
+                    let updatedRow = { ...row, [field]: value };
+                    
+                    if (field === 'end') { 
+                        const knownDest = destinations.find(d => d.name === value); 
+                        if (knownDest) updatedRow.distance = parseFloat(knownDest.distance); 
+                    }
+                    
+                    // 날짜/유종 변경 시 지역+날짜에 맞는 히스토리 데이터 조회
+                    if (field === 'date' || field === 'fuelType') {
+                        const dateToCheck = field === 'date' ? value : updatedRow.date;
+                        const fuelToCheck = field === 'fuelType' ? value : updatedRow.fuelType;
+                        
+                        // 1. 해당 날짜에 데이터가 있는지
+                        if (prices.history && prices.history[dateToCheck]) {
+                            // 2. 해당 날짜에 '현재 설정된 지역'의 데이터가 있는지 확인
+                            const regionData = prices.history[dateToCheck][config.region];
+                            if (regionData && regionData[fuelToCheck]) {
+                                updatedRow.unitPrice = regionData[fuelToCheck];
+                            } else {
+                                // 해당 지역 데이터가 없으면 현재가 (혹은 0)
+                                updatedRow.unitPrice = prices[fuelToCheck] || 0;
+                            }
+                        } else {
+                            updatedRow.unitPrice = prices[fuelToCheck] || 0;
+                        }
+                    }
+
+                    return updatedRow;
+                }));
+            };
+            const removeRow = (id) => setRows(rows.filter(r => r.id !== id));
+            
+            const calculateDetails = (row) => {
+                const dist = row.isRoundTrip ? row.distance * 2 : row.distance;
+                let eff = 10;
+                
+                if (row.fuelType === 'gasoline') eff = config.effGasoline;
+                else if (row.fuelType === 'diesel') eff = config.effDiesel;
+                else if (row.fuelType === 'lpg') eff = config.effLpg;
+                else if (row.fuelType === 'hydrogen') eff = config.effHydrogen;
+                else if (row.fuelType === 'electric') eff = config.effElectric;
+                
+                if (eff <= 0) eff = 1;
+
+                const priceToUse = row.unitPrice || 0;
+                const fuelCost = (dist / eff) * priceToUse;
+                const maintCost = dist * config.maintenanceCostPerKm;
+                const total = Math.round(fuelCost + maintCost);
+                return { total, fuelCost: Math.round(fuelCost), maintCost: Math.round(maintCost) };
+            };
+
+            const totalAmount = rows.reduce((sum, row) => sum + calculateDetails(row).total, 0);
+
+            // 표준 단가 조회 헬퍼 함수
+            const getStandardPrice = (date, fuelType) => {
+                // 1. 히스토리에서 해당 날짜+지역+유종 찾기
+                if (prices.history && prices.history[date] && 
+                    prices.history[date][config.region] && 
+                    prices.history[date][config.region][fuelType]) {
+                    return prices.history[date][config.region][fuelType];
+                }
+                // 2. 없으면 현재 전역 단가 리턴
+                return prices[fuelType] || 0;
+            };
+
+            return (
+                <div className="max-w-[1200px] mx-auto animate-slide-up mb-24 md:mb-8 print-safe-area">
+                    <div className="flex justify-between items-center mb-6 print:hidden">
+                        <div className="flex items-center text-sm font-medium text-slate-500 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-200">
+                             <Info size={16} className="mr-2 text-primary-500" />
+                             팁: 운행일자와 유종에 맞는 저장 단가가 있으면 자동 적용됩니다.
+                        </div>
+                        <div className="flex space-x-3">
+                            <button onClick={() => window.print()} className="px-5 py-2.5 bg-slate-800 text-white rounded-xl font-bold shadow-lg hover:bg-slate-900 transition flex items-center">
+                                <Printer size={18} className="mr-2" /> PDF 저장
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* PDF 인쇄 영역 (높이 제약 제거 및 스타일 최적화) */}
+                    <div className="bg-white shadow-card rounded-3xl p-12 print:shadow-none print:p-0 print:rounded-none w-full print:w-full">
+                        
+                        <div className="flex flex-col items-center mb-12 border-b border-slate-100 pb-8">
+                            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">교통비 청구서</h1>
+                            <p className="text-slate-400 text-sm font-medium uppercase tracking-[0.2em]">Expense Claim Report</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-12 mb-12">
+                            <div>
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">청구자 정보 (Employee)</h3>
+                                <div className="space-y-4">
+                                    <div className="flex items-center">
+                                        <span className="w-24 text-sm font-bold text-slate-500">소속 부서</span>
+                                        <input type="text" className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:ring-2 focus:ring-primary-500 outline-none print:border-none print:p-0" placeholder="부서명" value={header.dept} onChange={e=>setHeader({...header, dept: e.target.value})} />
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="w-24 text-sm font-bold text-slate-500">성 명</span>
+                                        <input type="text" className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-bold focus:ring-2 focus:ring-primary-500 outline-none print:border-none print:p-0" placeholder="이름" value={header.name} onChange={e=>setHeader({...header, name: e.target.value})} />
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="w-24 text-sm font-bold text-slate-500">청구 일자</span>
+                                        <input type="date" className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-primary-500 outline-none print:border-none print:p-0" value={header.submitDate} onChange={e=>setHeader({...header, submitDate: e.target.value})} />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-slate-850 rounded-2xl p-6 text-white flex flex-col justify-between shadow-2xl print:bg-transparent print:text-black print:shadow-none print:p-0 print:border print:border-slate-200">
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">총 청구금액</h3>
+                                    <p className="text-xs text-slate-500 mb-4 print:hidden">유류비 및 유지보수비 포함</p>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-4xl font-black tracking-tight">{formatCurrency(totalAmount)}</div>
+                                    <div className="text-xs text-slate-500 mt-2 font-medium print:hidden">KRW (Korean Won)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden print:border-slate-300 print:rounded-none">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider border-b border-slate-200 print:bg-slate-100">
+                                    <tr>
+                                        <th className="px-3 py-3 w-28">운행일자</th>
+                                        <th className="px-3 py-3">출발지</th>
+                                        <th className="px-3 py-3">도착지</th>
+                                        <th className="px-3 py-3 w-12 text-center">왕복</th>
+                                        <th className="px-3 py-3 text-right w-16">거리(km)</th>
+                                        <th className="px-3 py-3 w-20">유종</th>
+                                        <th className="px-3 py-3 text-right w-24 text-primary-700">적용단가</th>
+                                        <th className="px-3 py-3 text-right text-slate-400 w-32 font-normal">상세내역</th>
+                                        <th className="px-3 py-3 text-right w-28">산출금액</th>
+                                        <th className="px-3 py-3 w-10 text-center print:hidden"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {rows.map((row) => {
+                                        const costs = calculateDetails(row);
+                                        const standardPrice = getStandardPrice(row.date, row.fuelType);
+                                        const isMismatch = row.unitPrice !== standardPrice;
+
+                                        return (
+                                            <tr key={row.id} className="hover:bg-slate-50 transition-colors print:hover:bg-transparent">
+                                                <td className="px-3 py-2">
+                                                    <input type="date" value={row.date} onChange={(e) => updateRow(row.id, 'date', e.target.value)} 
+                                                        className="w-full bg-white border border-slate-300 rounded px-1 py-1 focus:border-primary-500 focus:outline-none font-medium text-slate-700 text-xs font-mono" />
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <input type="text" value={row.start} onChange={(e) => updateRow(row.id, 'start', e.target.value)} 
+                                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 focus:border-primary-500 focus:outline-none text-slate-700" />
+                                                </td>
+                                                <td className="px-3 py-2 relative">
+                                                    <input type="text" value={row.end} onChange={(e) => updateRow(row.id, 'end', e.target.value)} list={`dest-list-${row.id}`} 
+                                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 focus:border-primary-500 focus:outline-none font-bold text-slate-800" 
+                                                        placeholder="입력" />
+                                                    <datalist id={`dest-list-${row.id}`}>{destinations.map(d => <option key={d.id} value={d.name}>{d.name} ({d.distance}km)</option>)}</datalist>
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    <input type="checkbox" checked={row.isRoundTrip} onChange={(e) => updateRow(row.id, 'isRoundTrip', e.target.checked)} 
+                                                        className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300 print:appearance-auto cursor-pointer" />
+                                                </td>
+                                                <td className="px-3 py-2 text-right">
+                                                    <input type="number" value={row.distance} onChange={(e) => updateRow(row.id, 'distance', parseFloat(e.target.value))} 
+                                                        className={`w-full text-right bg-white border border-slate-300 rounded px-1 py-1 focus:border-primary-500 focus:outline-none font-mono font-bold ${row.distance === 0 ? 'text-rose-500 border-rose-200' : 'text-slate-700'}`} />
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <select value={row.fuelType} onChange={(e) => updateRow(row.id, 'fuelType', e.target.value)} 
+                                                        className="w-full bg-white border border-slate-300 rounded px-1 py-1 text-xs focus:border-primary-500 focus:outline-none font-bold text-slate-600">
+                                                        {FUEL_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td className="px-3 py-2 text-right relative group">
+                                                    <input type="number" value={row.unitPrice} onChange={(e) => updateRow(row.id, 'unitPrice', parseFloat(e.target.value))} 
+                                                        className={`w-full text-right bg-white border rounded px-1 py-1 focus:outline-none font-mono font-bold 
+                                                        ${isMismatch 
+                                                            ? 'text-orange-600 border-orange-300 bg-orange-50 focus:border-orange-500' 
+                                                            : 'text-primary-700 border-primary-200 focus:border-primary-500'}`} />
+                                                    
+                                                    {isMismatch && (
+                                                        <div className="text-[9px] text-orange-500 font-bold mt-0.5 text-right whitespace-nowrap">
+                                                            기준: {standardPrice.toLocaleString()}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-[10px] text-slate-400 font-mono">
+                                                    {costs.fuelCost.toLocaleString()} + {costs.maintCost.toLocaleString()}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-bold text-slate-900 font-mono">
+                                                    {formatCurrency(costs.total)}
+                                                </td>
+                                                <td className="px-3 py-2 text-center print:hidden">
+                                                    <button onClick={() => removeRow(row.id)} className="text-slate-300 hover:text-rose-500 transition"><Trash2 size={14} /></button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {rows.length === 0 && (
+                                        <tr><td colSpan="10" className="py-16 text-center text-slate-400 bg-slate-50/30 italic print:hidden">내역을 추가해주세요.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="mt-4 flex justify-end print:hidden">
+                            <button onClick={addRow} className="px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition flex items-center">
+                                <Plus size={18} className="mr-2" /> 항목 추가
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('claim');
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+            const [adminPassword, setAdminPassword] = useState('');
+            const [adminError, setAdminError] = useState('');
+            const DEFAULT_CONFIG = {
+                region: '서울', effGasoline: 10, effDiesel: 12, effLpg: 9, effHydrogen: 95, effElectric: 5,
+                maintenanceCostPerKm: 200, opinetApiKey: '', opinetProxyUrl: '', manualPriceHydrogen: 9900, manualPriceElectric: 300,
+                autoSyncEnabled: false, autoSyncIntervalMinutes: 360
+            };
+            const DEFAULT_DESTINATIONS = [{ id: 1, name: '서울 본사', distance: 0 }, { id: 2, name: '인천 물류센터', distance: 35 }];
+            const DEFAULT_PRICES = { gasoline: 1750, diesel: 1620, lpg: 980, hydrogen: 9900, electric: 300, lastUpdated: 'Ready', history: {} };
+
+            const [config, setConfig] = useState(() => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(LOCAL_CONFIG_KEY));
+                    return { ...DEFAULT_CONFIG, ...(saved || {}) };
+                } catch {
+                    return DEFAULT_CONFIG;
+                }
+            });
+            const [hasLocalBackup] = useState(() => {
+                try { return !!localStorage.getItem(LOCAL_CONFIG_KEY); } catch { return false; }
+            });
+            const [destinations, setDestinations] = useState(() => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(LOCAL_DESTINATIONS_KEY));
+                    return Array.isArray(saved) ? saved : DEFAULT_DESTINATIONS;
+                } catch {
+                    return DEFAULT_DESTINATIONS;
+                }
+            });
+            const [prices, setPrices] = useState(() => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(LOCAL_PRICES_KEY));
+                    if (!saved) return DEFAULT_PRICES;
+                    return {
+                        ...DEFAULT_PRICES,
+                        ...saved,
+                        history: normalizeAndPruneHistory(saved.history || {}, 60)
+                    };
+                } catch {
+                    return DEFAULT_PRICES;
+                }
+            });
+            const [cloudReady, setCloudReady] = useState(false);
+            const [cloudEnabled, setCloudEnabled] = useState(true);
+            const [connectionState, setConnectionState] = useState({ status: 'idle', message: '' });
+            const [syncState, setSyncState] = useState({ loading: false, status: '준비', error: null });
+            const syncInFlightRef = useRef(false);
+            const handleOpenAdmin = () => {
+                setAdminPassword('');
+                setAdminError('');
+                setShowAdminPrompt(true);
+            };
+            const handleLoginAdmin = async () => {
+                try {
+                    const inputHash = await hashText(adminPassword || '');
+                    if (inputHash !== ADMIN_PASSWORD_HASH) {
+                        setAdminError('비밀번호가 올바르지 않습니다.');
+                        return;
+                    }
+                    setIsAdmin(true);
+                    setShowAdminPrompt(false);
+                    setAdminPassword('');
+                    setAdminError('');
+                } catch (e) {
+                    setAdminError('보안 모듈을 사용할 수 없습니다. 브라우저를 확인해주세요.');
+                }
+            };
+            const handleExitAdmin = () => {
+                setIsAdmin(false);
+                setActiveTab('claim');
+            };
+
+            const handleSaveApiKey = (apiKey) => {
+                setConfig(prev => {
+                    const next = { ...prev, opinetApiKey: apiKey };
+                    try { localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(next)); } catch {}
+                    return next;
+                });
+            };
+            const forceSaveSettings = async () => {
+                try { localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config)); } catch {}
+                if (!cloudEnabled) return false;
+                try {
+                    const cloudApi = await getCloudApi();
+                    await cloudApi.setDoc(cloudApi.docRef, {
+                        config,
+                        updatedAt: cloudApi.serverTimestamp()
+                    }, { merge: true });
+                    return true;
+                } catch (err) {
+                    console.error("Cloud config save failed:", err);
+                    return false;
+                }
+            };
+
+            const handleCheckConnection = async (apiKeyCandidate) => {
+                const candidateKey = (apiKeyCandidate || '').trim();
+                if (!candidateKey) {
+                    setConnectionState({ status: 'error', message: '인증키를 먼저 입력하세요.' });
+                    return;
+                }
+                setConnectionState({ status: 'checking', message: '오피넷 통신 점검 중...' });
+                let statusText = '';
+                let errorText = '';
+                const ok = await syncOpinetPrices({
+                    config: { ...config, opinetApiKey: candidateKey },
+                    setPrices: () => {},
+                    onLoading: () => {},
+                    onStatus: (msg) => { statusText = msg; },
+                    onError: (msg) => { errorText = msg; }
+                });
+                if (ok) setConnectionState({ status: 'ok', message: statusText || '연동 정상' });
+                else setConnectionState({ status: 'error', message: errorText || statusText || '연동 실패' });
+            };
+            const runGlobalSync = async (overrideConfig = null) => {
+                if (syncInFlightRef.current) return false;
+                syncInFlightRef.current = true;
+                const targetConfig = overrideConfig || config;
+                try {
+                    const ok = await syncOpinetPrices({
+                        config: targetConfig,
+                        setPrices,
+                        onLoading: (loading) => setSyncState(prev => ({ ...prev, loading })),
+                        onStatus: (status) => setSyncState(prev => ({ ...prev, status })),
+                        onError: (error) => setSyncState(prev => ({ ...prev, error }))
+                    });
+                    return ok;
+                } finally {
+                    syncInFlightRef.current = false;
+                }
+            };
+
+            useEffect(() => {
+                const loadCloudData = async () => {
+                    try {
+                        const cloudApi = await getCloudApi();
+                        const snap = await cloudApi.getDoc(cloudApi.docRef);
+                        if (snap.exists()) {
+                            const data = snap.data() || {};
+                            if (data.config) {
+                                setConfig(prev => hasLocalBackup
+                                    ? {
+                                        ...data.config,
+                                        ...prev,
+                                        opinetApiKey: (prev.opinetApiKey || data.config.opinetApiKey || '').trim()
+                                    }
+                                    : {
+                                        ...prev,
+                                        ...data.config,
+                                        opinetApiKey: (data.config.opinetApiKey || '').trim()
+                                    }
+                                );
+                            }
+                            if (Array.isArray(data.destinations)) setDestinations(data.destinations);
+                            if (data.prices) {
+                                setPrices(prev => ({
+                                    ...prev,
+                                    ...data.prices,
+                                    history: normalizeAndPruneHistory(
+                                        mergeHistoryMaps(prev.history || {}, data.prices.history || {}),
+                                        60
+                                    )
+                                }));
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Cloud load failed:", err);
+                        setCloudEnabled(false);
+                    } finally {
+                        setCloudReady(true);
+                    }
+                };
+                loadCloudData();
+            }, [hasLocalBackup]);
+
+            useEffect(() => {
+                if (!isAdmin && activeTab !== 'claim') {
+                    setActiveTab('claim');
+                }
+            }, [isAdmin, activeTab]);
+
+            useEffect(() => {
+                try { localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config)); } catch {}
+            }, [config]);
+            useEffect(() => {
+                try { localStorage.setItem(LOCAL_DESTINATIONS_KEY, JSON.stringify(destinations)); } catch {}
+            }, [destinations]);
+            useEffect(() => {
+                try { localStorage.setItem(LOCAL_PRICES_KEY, JSON.stringify(prices)); } catch {}
+            }, [prices]);
+
+            useEffect(() => {
+                if (!cloudReady) return;
+                if (!cloudEnabled) return;
+                const timer = setTimeout(async () => {
+                    try {
+                        const cloudApi = await getCloudApi();
+                        await cloudApi.setDoc(cloudApi.docRef, {
+                            config,
+                            destinations,
+                            prices,
+                            updatedAt: cloudApi.serverTimestamp()
+                        }, { merge: true });
+                    } catch (err) {
+                        console.error("Cloud save failed:", err);
+                        setCloudEnabled(false);
+                    }
+                }, 500);
+                return () => clearTimeout(timer);
+                }, [config, destinations, prices, cloudReady, cloudEnabled]);
+
+            const cloudState = !cloudReady
+                ? { text: '확인 중', dot: 'bg-amber-500' }
+                : (cloudEnabled ? { text: '정상', dot: 'bg-emerald-500' } : { text: '오류', dot: 'bg-rose-500' });
+
+            return (
+                <div className="min-h-screen text-slate-800 pb-20">
+                    <Header
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
+                        isAdmin={isAdmin}
+                        onOpenAdmin={handleOpenAdmin}
+                        onExitAdmin={handleExitAdmin}
+                        cloudState={cloudState}
+                    />
+                    <main className="container mx-auto px-4 py-8">
+                        {activeTab === 'claim' && <ClaimForm config={config} destinations={destinations} prices={prices} />}
+                        {isAdmin && activeTab === 'distances' && <DistanceManager destinations={destinations} setDestinations={setDestinations} />}
+                        {isAdmin && activeTab === 'prices' && <FuelPrices config={config} prices={prices} setPrices={setPrices} syncState={syncState} onRefresh={runGlobalSync} />}
+                        {isAdmin && activeTab === 'settings' && (
+                            <SettingsPanel
+                                config={config}
+                                setConfig={setConfig}
+                                connectionState={connectionState}
+                                onSaveApiKey={handleSaveApiKey}
+                                onCheckConnection={handleCheckConnection}
+                                onSaveSettings={forceSaveSettings}
+                            />
+                        )}
+                    </main>
+                    {showAdminPrompt && (
+                        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center px-4">
+                            <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-xl p-6">
+                                <h3 className="text-lg font-bold text-slate-800 mb-3">관리자 모드 접속</h3>
+                                <input
+                                    type="password"
+                                    value={adminPassword}
+                                    onChange={(e) => setAdminPassword(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') handleLoginAdmin(); }}
+                                    placeholder="비밀번호 입력"
+                                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none"
+                                    autoFocus
+                                />
+                                {adminError && <p className="mt-2 text-sm text-rose-600">{adminError}</p>}
+                                <div className="mt-4 flex justify-end gap-2">
+                                    <button onClick={() => setShowAdminPrompt(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600">취소</button>
+                                    <button onClick={handleLoginAdmin} className="px-4 py-2 rounded-lg bg-slate-800 text-white font-semibold">접속</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
