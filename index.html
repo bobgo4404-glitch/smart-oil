@@ -39,7 +39,8 @@
             "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
             "lucide-react": "https://esm.sh/lucide-react@0.300.0?deps=react@18.2.0",
             "firebase/app": "https://esm.sh/firebase@11.0.2/app",
-            "firebase/firestore": "https://esm.sh/firebase@11.0.2/firestore"
+            "firebase/firestore": "https://esm.sh/firebase@11.0.2/firestore",
+            "firebase/app-check": "https://esm.sh/firebase@11.0.2/app-check"
         }
     }
     </script>
@@ -152,13 +153,23 @@
             appId: "1:573849232582:web:5086954fc84ebc7daf23c7",
             measurementId: "G-P52KB29LHV"
         };
+        const APP_CHECK_SITE_KEY = "6LeJOnUsAAAAAO7DqHAHDpN2n2LFl8hwG6802bd";
         let cloudApiCache = null;
 
         const getCloudApi = async () => {
             if (cloudApiCache) return cloudApiCache;
-            const appMod = await import('firebase/app');
-            const fsMod = await import('firebase/firestore');
+            const appMod = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js');
+            const fsMod = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js');
+            const appCheckMod = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-app-check.js');
             const fbApp = appMod.initializeApp(firebaseConfig);
+            try {
+                appCheckMod.initializeAppCheck(fbApp, {
+                    provider: new appCheckMod.ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
+                    isTokenAutoRefreshEnabled: true
+                });
+            } catch (err) {
+                console.warn("App Check init skipped:", err?.message || err);
+            }
             const db = fsMod.getFirestore(fbApp);
             const docRef = fsMod.doc(db, "apps", "smart-fuel-expense-v2026");
             cloudApiCache = {
