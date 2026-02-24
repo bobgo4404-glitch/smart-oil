@@ -263,6 +263,15 @@
             });
             return result;
         };
+        const getTodayKey = () => new Date().toISOString().split('T')[0];
+        const getMissingRegionsForToday = (history) => {
+            const today = getTodayKey();
+            const todayData = (history && history[today]) || {};
+            return Object.keys(SIDO_CODES).filter((regionName) => {
+                const row = todayData[regionName];
+                return !(row && row.gasoline && row.diesel && row.lpg);
+            });
+        };
 
         const syncOpinetPrices = async ({
             config,
@@ -270,7 +279,8 @@
             onLoading = () => {},
             onError = () => {},
             onStatus = () => {},
-            allRegions = true
+            allRegions = true,
+            targetRegions = null
         }) => {
             onLoading(true);
             onError(null);
@@ -339,9 +349,11 @@
                 return Number.isFinite(value) ? Math.round(value) : 0;
             };
 
-            const regionsToFetch = allRegions
-                ? Object.entries(SIDO_CODES)
-                : [[config.region, SIDO_CODES[config.region] || '01']];
+            const regionsToFetch = Array.isArray(targetRegions) && targetRegions.length > 0
+                ? targetRegions.map((name) => [name, SIDO_CODES[name]]).filter(([, code]) => !!code)
+                : (allRegions
+                    ? Object.entries(SIDO_CODES)
+                    : [[config.region, SIDO_CODES[config.region] || '01']]);
             const mergedHistoryData = {};
             const regionCurrentPrices = {};
             let successCount = 0;
@@ -1228,6 +1240,7 @@
             const [connectionState, setConnectionState] = useState({ status: 'idle', message: '' });
             const [syncState, setSyncState] = useState({ loading: false, status: '준비', error: null });
             const syncInFlightRef = useRef(false);
+            const autoSyncDayRef = useRef('');
             const handleOpenAdmin = () => {
                 setAdminPassword('');
                 setAdminError('');
@@ -1295,7 +1308,7 @@
                 if (ok) setConnectionState({ status: 'ok', message: statusText || '연동 정상' });
                 else setConnectionState({ status: 'error', message: errorText || statusText || '연동 실패' });
             };
-            const runGlobalSync = async (overrideConfig = null) => {
+            const runGlobalSync = async (overrideConfig = null, syncOptions = {}) => {
                 if (syncInFlightRef.current) return false;
                 syncInFlightRef.current = true;
                 const targetConfig = overrideConfig || config;
@@ -1305,7 +1318,8 @@
                         setPrices,
                         onLoading: (loading) => setSyncState(prev => ({ ...prev, loading })),
                         onStatus: (status) => setSyncState(prev => ({ ...prev, status })),
-                        onError: (error) => setSyncState(prev => ({ ...prev, error }))
+                        onError: (error) => setSyncState(prev => ({ ...prev, error })),
+                        ...syncOptions
                     });
                     return ok;
                 } finally {
@@ -1361,6 +1375,25 @@
                     setActiveTab('claim');
                 }
             }, [isAdmin, activeTab]);
+
+            useEffect(() => {
+                if (!isAdmin) return;
+                const today = getTodayKey();
+                if (autoSyncDayRef.current === today) return;
+
+                const missingRegions = getMissingRegionsForToday(prices.history || {});
+                if (missingRegions.length === 0) {
+                    autoSyncDayRef.current = today;
+                    setSyncState(prev => ({ ...prev, status: '오늘 데이터 존재 (자동갱신 생략)', error: null }));
+                    return;
+                }
+
+                autoSyncDayRef.current = today;
+                runGlobalSync(config, {
+                    allRegions: false,
+                    targetRegions: missingRegions
+                });
+            }, [isAdmin, prices.history, config]);
 
             useEffect(() => {
                 try { localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config)); } catch {}
