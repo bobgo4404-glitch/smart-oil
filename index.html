@@ -12,7 +12,7 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: { 50: '#eefbf6', 100: '#d7f4e8', 500: '#0f766e', 600: '#0b5f59', 700: '#084c48' },
+                        primary: { 50: '#fef2f2', 100: '#fee2e2', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c' },
                         slate: { 850: '#15202b' },
                         ink: { 900: '#101828' },
                         sand: { 100: '#f7f4ee', 200: '#ebe5da' }
@@ -54,9 +54,9 @@
         body {
             font-family: "Pretendard", sans-serif;
             background:
-                radial-gradient(circle at top left, rgba(15,118,110,0.12), transparent 28%),
-                radial-gradient(circle at top right, rgba(16,24,40,0.08), transparent 24%),
-                linear-gradient(180deg, #f6f8f7 0%, #eef2f1 48%, #f7f8fa 100%);
+                radial-gradient(circle at top left, rgba(220,38,38,0.09), transparent 28%),
+                radial-gradient(circle at top right, rgba(17,24,39,0.06), transparent 24%),
+                linear-gradient(180deg, #fdfbfb 0%, #f8f4f4 48%, #ffffff 100%);
             min-height: 100vh;
         }
         
@@ -70,8 +70,8 @@
         }
         .hero-shell {
             background:
-                radial-gradient(circle at top right, rgba(45,212,191,0.18), transparent 26%),
-                linear-gradient(135deg, #111827 0%, #172033 48%, #0f766e 100%);
+                radial-gradient(circle at top right, rgba(239,68,68,0.22), transparent 26%),
+                linear-gradient(135deg, #111827 0%, #1c1417 50%, #7f1d1d 100%);
             border: 1px solid rgba(255,255,255,0.08);
             box-shadow: 0 24px 60px rgba(16,24,40,0.16);
         }
@@ -98,33 +98,34 @@
 
         /* 인쇄 설정 (PDF 저장 최적화 - 우측 잘림 방지 강화) */
         @media print {
-            @page { 
+            /* 브라우저 인쇄창의 '여백' 설정(기본/없음/최소/맞춤)에 따라 결과가 달라지는 것을 막기 위해
+               @page 여백은 0으로 고정하고, 여백은 아래 .print-safe-area padding으로 직접 제어한다. */
+            @page {
                 size: A4 portrait; /* A4 세로 방향 */
-                margin: 9mm 11mm 9mm 9mm;
-            } 
-            body { 
-                background: white; 
-                -webkit-print-color-adjust: exact; 
-                font-size: 8.5pt;
-                zoom: 0.96;
+                margin: 0;
+            }
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
+                font-size: 10.5pt;
                 width: 100% !important;
                 min-width: 0 !important;
             }
             header, nav, .no-print, button, .print\:hidden { display: none !important; }
-            
+
             /* 컨테이너 및 레이아웃 강제 조정 */
-            .container, .max-w-\[1200px\] { 
-                width: 100% !important; 
-                max-width: none !important; 
-                margin: 0 !important; 
-                padding: 0 !important; 
+            .container, .max-w-\[1200px\] {
+                width: 100% !important;
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
                 overflow: visible !important;
             }
 
-            /* 인쇄 시 우측에 강제로 안전 여백 추가 */
+            /* 여백을 브라우저 설정이 아닌 CSS로 직접 지정 (상단 9mm, 우측 13mm, 하단 9mm, 좌측 10mm) */
             .print-safe-area {
-                padding-right: 2mm !important;
-                padding-left: 1mm !important;
+                padding: 9mm 13mm 9mm 10mm !important;
+                margin: 0 !important;
                 box-sizing: border-box !important;
             }
             
@@ -140,12 +141,12 @@
             .print\:border-black { border: 1px solid black !important; }
             
             /* 입력창 스타일 최적화 */
-            input, select { 
-                border: none !important; 
-                background: transparent !important; 
-                box-shadow: none !important; 
-                padding: 0 !important; 
-                font-size: 9pt !important;
+            input, select {
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                font-size: 10.5pt !important;
                 height: auto !important;
                 max-width: 100% !important; /* 부모 영역 넘침 방지 */
                 min-width: 0 !important;
@@ -155,25 +156,28 @@
             /* 테이블 최적화 - 세로 인쇄 시 우측 잘림 방지 */
             table { width: 100% !important; border-collapse: collapse !important; table-layout: auto !important; }
             th[class*="w-"], td[class*="w-"] { width: auto !important; }
-            th, td { 
-                border-bottom: 1px solid #94a3b8 !important; 
-                padding: 5px 3px !important;
+            th, td {
+                border-bottom: 1px solid #94a3b8 !important;
+                padding: 9px 6px !important;
                 white-space: normal;
                 overflow: visible;
                 text-overflow: clip;
                 word-break: break-word;
-                line-height: 1.35;
+                line-height: 1.5;
+                font-size: 10pt;
             }
-            thead th { 
-                background-color: #e2e8f0 !important; 
-                color: #0f172a !important; 
-                border-top: 2px solid #334155 !important;
-                border-bottom: 2px solid #334155 !important;
+            thead th {
+                background-color: #fbe2e2 !important;
+                color: #7f1d1d !important;
+                border-top: 2px solid #b91c1c !important;
+                border-bottom: 2px solid #b91c1c !important;
                 -webkit-print-color-adjust: exact;
             }
             
             /* 강제 줄바꿈 방지 */
             tr { page-break-inside: avoid; }
+            .print-document-header, .print-summary-grid { page-break-inside: avoid; break-inside: avoid; }
+            thead { display: table-header-group; }
             .print-portrait-stack {
                 display: block !important;
             }
@@ -182,33 +186,43 @@
             }
             .print-document-header {
                 display: block !important;
-                margin-bottom: 6mm !important;
-                padding-bottom: 4mm !important;
-                border-bottom: 2px solid #1f2937 !important;
+                margin-bottom: 8mm !important;
+                padding-bottom: 5mm !important;
+                border-bottom: 2.5px solid #b91c1c !important;
             }
             .print-document-title {
-                font-size: 18pt !important;
+                font-size: 22pt !important;
                 font-weight: 800 !important;
                 color: #111827 !important;
                 letter-spacing: -0.02em;
             }
+            .print-document-title::before {
+                content: "";
+                display: inline-block;
+                width: 4mm;
+                height: 4mm;
+                background: #b91c1c;
+                border-radius: 1px;
+                margin-right: 2.5mm;
+                vertical-align: middle;
+            }
             .print-document-subtitle {
                 margin-top: 2mm !important;
-                font-size: 9pt !important;
+                font-size: 10.5pt !important;
                 color: #475569 !important;
             }
             .print-document-meta {
-                margin-top: 3mm !important;
+                margin-top: 4mm !important;
                 display: flex !important;
                 justify-content: space-between !important;
                 gap: 6mm !important;
-                font-size: 8.5pt !important;
+                font-size: 10pt !important;
                 color: #334155 !important;
             }
             .print-summary-grid {
                 display: flex !important;
-                gap: 6mm !important;
-                margin-bottom: 6mm !important;
+                gap: 7mm !important;
+                margin-bottom: 8mm !important;
                 align-items: stretch !important;
             }
             .print-info-card,
@@ -218,36 +232,37 @@
                 background: #ffffff !important;
                 color: #0f172a !important;
                 box-shadow: none !important;
-                height: 32mm !important;
-                min-height: 32mm !important;
+                height: 40mm !important;
+                min-height: 40mm !important;
                 box-sizing: border-box !important;
                 align-self: stretch !important;
             }
             .print-info-card {
                 flex: 1.4 1 0 !important;
-                padding: 3mm 3.5mm !important;
+                padding: 4.5mm 5mm !important;
             }
             .print-total-card {
                 flex: 0.8 1 0 !important;
-                padding: 3mm 3.5mm !important;
+                padding: 4.5mm 5mm !important;
                 display: flex !important;
                 flex-direction: column !important;
                 justify-content: center !important;
+                border: 1.5px solid #b91c1c !important;
             }
             .print-section-title {
-                font-size: 8pt !important;
+                font-size: 9.5pt !important;
                 font-weight: 700 !important;
                 color: #64748b !important;
                 text-transform: uppercase !important;
                 letter-spacing: 0.08em !important;
                 border-bottom: 1px solid #e2e8f0 !important;
-                padding-bottom: 2mm !important;
-                margin-bottom: 3mm !important;
+                padding-bottom: 2.5mm !important;
+                margin-bottom: 4mm !important;
             }
             .print-total-amount {
-                font-size: 17pt !important;
+                font-size: 24pt !important;
                 font-weight: 800 !important;
-                color: #111827 !important;
+                color: #b91c1c !important;
             }
             .print-total-body {
                 display: flex !important;
@@ -257,9 +272,9 @@
             }
             .print-info-rows {
                 display: grid !important;
-                grid-template-columns: 13mm 1fr 13mm 1fr !important;
-                column-gap: 3mm !important;
-                row-gap: 1mm !important;
+                grid-template-columns: 16mm 1fr 16mm 1fr !important;
+                column-gap: 4mm !important;
+                row-gap: 2.5mm !important;
                 align-items: center !important;
             }
             .print-info-rows > * {
@@ -270,20 +285,20 @@
             }
             .print-info-label {
                 width: auto !important;
-                font-size: 8.5pt !important;
+                font-size: 9.5pt !important;
                 font-weight: 700 !important;
                 color: #64748b !important;
             }
             .print-info-value {
-                font-size: 8.8pt !important;
+                font-size: 10pt !important;
                 font-weight: 600 !important;
                 color: #0f172a !important;
             }
             .print-info-compact {
                 display: grid !important;
-                grid-template-columns: 13mm 1fr 13mm 1fr !important;
-                column-gap: 3mm !important;
-                row-gap: 1mm !important;
+                grid-template-columns: 16mm 1fr 16mm 1fr !important;
+                column-gap: 4mm !important;
+                row-gap: 2.5mm !important;
                 align-items: center !important;
             }
             /* 청구서 표 컬럼 비율 재조정 (상세내역/산출금액 확보) */
@@ -702,10 +717,14 @@
             };
             const saveAllSettings = async () => {
                 setSavingAll(true);
-                const ok = await onSaveSettings();
+                const result = await onSaveSettings();
                 setSavingAll(false);
-                setSaveAllMessage(ok ? '환경설정 저장 완료' : '로컬 저장 완료 (클라우드 저장 실패)');
-                setTimeout(() => setSaveAllMessage(''), 2200);
+                setSaveAllMessage(
+                    result.ok
+                        ? '환경설정 저장 완료'
+                        : `로컬 저장 완료 (클라우드 저장 실패${result.message ? `: ${result.message}` : ''})`
+                );
+                setTimeout(() => setSaveAllMessage(''), 4000);
             };
             const statusMeta = {
                 idle: { dot: 'bg-slate-400', text: '미확인' },
@@ -787,7 +806,7 @@
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <section>
                                     <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> 기본 설정
+                                        <span className="w-2 h-2 rounded-full bg-rose-500 mr-2"></span> 기본 설정
                                     </h3>
                                     <div className="space-y-4">
                                         <div>
@@ -813,7 +832,7 @@
 
                                 <section>
                                     <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500 mr-2"></span> 수소/전기 기준 단가 (수동)
+                                        <span className="w-2 h-2 rounded-full bg-orange-500 mr-2"></span> 수소/전기 기준 단가 (수동)
                                     </h3>
                                     <div className="space-y-4">
                                         <div>
@@ -838,7 +857,7 @@
 
                             <section>
                                 <h3 className="text-xs font-bold text-slate-500 mb-4 flex items-center uppercase tracking-wide">
-                                    <span className="w-2 h-2 rounded-full bg-violet-500 mr-2"></span> 차량 연비 설정
+                                    <span className="w-2 h-2 rounded-full bg-red-800 mr-2"></span> 차량 연비 설정
                                 </h3>
                                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                     {[{ id: 'effGasoline', label: '휘발유', unit: 'km/L' }, { id: 'effDiesel', label: '경유', unit: 'km/L' }, { id: 'effLpg', label: 'LPG', unit: 'km/L' }, { id: 'effHydrogen', label: '수소', unit: 'km/kg' }, { id: 'effElectric', label: '전기', unit: 'km/kWh' }].map((item) => (
@@ -1019,7 +1038,7 @@
                                         {syncState.status || '준비'}
                                     </span>
                                     {regionHistoryData.length > 0 && (
-                                        <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-600 text-xs font-bold border border-indigo-100 flex items-center">
+                                        <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 text-xs font-bold border border-rose-100 flex items-center">
                                             <Database size={12} className="mr-1"/> {viewRegion} 데이터 {regionHistoryData.length}건 보유
                                         </span>
                                     )}
@@ -1056,11 +1075,11 @@
                         {/* Current Prices Cards */}
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                             {[
-                                { label: '휘발유', key: 'gasoline', color: 'text-amber-700 bg-amber-50 border-amber-200', icon: '⛽' },
-                                { label: '경유', key: 'diesel', color: 'text-blue-700 bg-blue-50 border-blue-200', icon: '🚛' },
-                                { label: 'LPG', key: 'lpg', color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: '🔥' },
-                                { label: '수소', key: 'hydrogen', color: 'text-cyan-700 bg-cyan-50 border-cyan-200', icon: '💧', manual: true },
-                                { label: '전기', key: 'electric', color: 'text-violet-700 bg-violet-50 border-violet-200', icon: '⚡', unit: 'kWh', manual: true }
+                                { label: '휘발유', key: 'gasoline', color: 'text-red-700 bg-red-50 border-red-200', icon: '⛽' },
+                                { label: '경유', key: 'diesel', color: 'text-rose-700 bg-rose-50 border-rose-200', icon: '🚛' },
+                                { label: 'LPG', key: 'lpg', color: 'text-orange-700 bg-orange-50 border-orange-200', icon: '🔥' },
+                                { label: '수소', key: 'hydrogen', color: 'text-pink-700 bg-pink-50 border-pink-200', icon: '💧', manual: true },
+                                { label: '전기', key: 'electric', color: 'text-slate-700 bg-slate-100 border-slate-200', icon: '⚡', unit: 'kWh', manual: true }
                             ].map((item) => (
                                 <div key={item.key} className={`relative p-5 rounded-2xl border transition-all duration-300 hover:shadow-md ${item.color} bg-opacity-40`}>
                                     {item.manual && <span className="absolute top-2 right-3 text-[10px] uppercase font-bold tracking-wider opacity-60">수동설정</span>}
@@ -1085,9 +1104,9 @@
                                     <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                                         <tr>
                                             <th className="px-6 py-3 font-bold">날짜</th>
-                                            <th className="px-6 py-3 text-right text-amber-600 font-bold">휘발유</th>
-                                            <th className="px-6 py-3 text-right text-blue-600 font-bold">경유</th>
-                                            <th className="px-6 py-3 text-right text-emerald-600 font-bold">LPG</th>
+                                            <th className="px-6 py-3 text-right text-red-600 font-bold">휘발유</th>
+                                            <th className="px-6 py-3 text-right text-rose-600 font-bold">경유</th>
+                                            <th className="px-6 py-3 text-right text-orange-600 font-bold">LPG</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -1497,7 +1516,7 @@
                                 </div>
                             </div>
                             
-                            <div className="bg-slate-850 rounded-2xl p-5 text-white flex flex-col justify-between shadow-2xl min-h-[244px] print:bg-transparent print:text-black print:shadow-none print:p-0 print:border print:border-slate-200 print-total-card">
+                            <div className="bg-slate-850 rounded-2xl p-5 text-white flex flex-col justify-between shadow-2xl min-h-[244px] border border-red-900/40 print:bg-transparent print:text-black print:shadow-none print:p-0 print:border print:border-slate-200 print-total-card">
                                 <div className="print-total-body">
                                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 print-section-title print:mb-0 print:border-0 print:p-0">총 청구금액</h3>
                                     <p className="text-xs text-slate-500 mb-3 print:hidden">유류비 및 유지보수비 포함</p>
@@ -1596,7 +1615,7 @@
                             </table>
                         </div>
                         <div className="mt-4 flex justify-end gap-2 print:hidden">
-                            <button onClick={saveDraft} className="px-5 py-2.5 bg-amber-500 text-white rounded-xl font-bold shadow-lg hover:bg-amber-600 transition flex items-center">
+                            <button onClick={saveDraft} className="px-5 py-2.5 bg-white text-red-700 border-2 border-red-200 rounded-xl font-bold shadow-sm hover:bg-red-50 hover:border-red-300 transition flex items-center">
                                 <Database size={18} className="mr-2" /> 임시저장
                             </button>
                             <button onClick={addRow} className="px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition flex items-center">
@@ -1676,17 +1695,18 @@
             };
 
             const forceSaveSettings = async () => {
-                if (!cloudEnabled) return false;
                 try {
                     const cloudApi = await getCloudApi();
                     await cloudApi.setDoc(cloudApi.docRef, {
                         config,
                         updatedAt: cloudApi.serverTimestamp()
                     }, { merge: true });
-                    return true;
+                    setCloudEnabled(true);
+                    return { ok: true };
                 } catch (err) {
                     console.error("Cloud config save failed:", err);
-                    return false;
+                    setCloudEnabled(false);
+                    return { ok: false, message: err?.message || String(err) };
                 }
             };
 
